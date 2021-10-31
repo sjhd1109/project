@@ -40,7 +40,9 @@
  
      코드 링크 : https://github.com/sjhd1109/project/blob/main/NBA_Tree%2CNN.R
      
+     
                 https://github.com/sjhd1109/project/blob/main/NBA_logistic.R
+                
  
      분석 결과 링크 :  https://github.com/sjhd1109/project/blob/main/NBA%EB%86%8D%EA%B5%AC%EB%A6%AC%EA%B7%B8%EC%98%88%EC%B8%A1%EB%AA%A8%EB%8D%B8.pdf
      
