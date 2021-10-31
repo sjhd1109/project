@@ -38,14 +38,19 @@
                
     코드링크(데이터 처리) : https://github.com/sjhd1109/project/blob/main/xai%20credig%20modeling_data%EC%A0%84%EC%B2%98%EB%A6%AC.ipynb
  
+ 4. 베이지안 연구방법 : 신용평가 모델링에서 MCMC방법과 로지스틱 회귀분석 결과 비교
  
- 4. 시계열 분석과 예측 : 대통령 지지율과 거시경제의 상관관계 분석 (시계열 데이터 분석과 시계열 회귀모델링 분석)
+   코드 링크 :  https://github.com/sjhd1109/project/blob/main/%EB%B2%A0%EC%9D%B4%EC%A7%80%EC%95%88.R
+ 
+   분석결과 파일 링크 :  https://github.com/sjhd1109/project/blob/main/%EB%B2%A0%EC%9D%B4%EC%A7%80%EC%95%88%20%EA%B2%B0%EA%B3%BC%EB%B6%84%EC%84%9D.pdf
+ 
+ 5. 시계열 분석과 예측 : 대통령 지지율과 거시경제의 상관관계 분석 (시계열 데이터 분석과 시계열 회귀모델링 분석)
 
      코드 링크 : https://github.com/sjhd1109/project/blob/main/timeseries_code.R
  
      보고서 링크 :                        https://github.com/sjhd1109/project/blob/main/%EC%8B%9C%EA%B3%84%EC%97%B4%EB%B6%84%EC%84%9D_%EB%8C%80%ED%86%B5%EB%A0%B9%EC%A7%80%EC%A7%80%EC%9C%A8%EA%B3%BC%20%EA%B1%B0%EC%8B%9C%EA%B2%BD%EC%A0%9C%20%EC%83%81%EA%B4%80%EA%B4%80%EA%B3%84.pdf
  
- 5. 정형 데이터 예측 모델링 구축 (데이터 : NBA 리그, 통계모델, 의사결정나무, Neuralnet) 비교 
+ 6. 정형 데이터 예측 모델링 구축 (데이터 : NBA 리그, 통계모델, 의사결정나무, Neuralnet) 비교 
  
      코드 링크(머신러닝) : https://github.com/sjhd1109/project/blob/main/NBA_Tree%2CNN.R
      
@@ -56,15 +61,11 @@
      분석 결과 링크 :  https://github.com/sjhd1109/project/blob/main/NBA%EB%86%8D%EA%B5%AC%EB%A6%AC%EA%B7%B8%EC%98%88%EC%B8%A1%EB%AA%A8%EB%8D%B8.pdf
    
      
- 6. 정형 데이터 예측 모델링 구축 (데이터 : 음원데이터, 통계모델, XGB, RandomForest, NN 등 머시러닝, 딥러닝 모델 구축 비교)
+ 7. 정형 데이터 예측 모델링 구축 (데이터 : 음원데이터, 통계모델, XGB, RandomForest, NN 등 머시러닝, 딥러닝 모델 구축 비교)
 
     코드 : https://github.com/sjhd1109/project/blob/main/music_predict.R
     
     분석 결과 : https://github.com/sjhd1109/project/blob/main/%EC%9D%8C%EC%9B%90%EB%8D%B0%EC%9D%B4%ED%84%B0top100%EC%98%88%EC%B8%A1%EB%AA%A8%EB%8D%B8.pdf
  
- 7. 베이지안 연구방법 : 신용평가 모델링에서 MCMC방법과 로지스틱 회귀분석 결과 비교
- 
-   코드 링크 :  https://github.com/sjhd1109/project/blob/main/%EB%B2%A0%EC%9D%B4%EC%A7%80%EC%95%88.R
- 
-   분석결과 파일 링크 :  https://github.com/sjhd1109/project/blob/main/%EB%B2%A0%EC%9D%B4%EC%A7%80%EC%95%88%20%EA%B2%B0%EA%B3%BC%EB%B6%84%EC%84%9D.pdf
+
  
