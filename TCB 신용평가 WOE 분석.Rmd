@@ -1,0 +1,1471 @@
+---
+title: "KTCB 신용평가 WOE 분석"
+author: "김소정"
+date: '2021 3 30 '
+output:
+  word_document:
+    fig_height: 6
+    fig_width: 9
+    toc: no
+---
+
+```{r, echo=FALSE}
+install.packages("Information", repos = "http://cran.us.r-project.org")
+install.packages("scorecard", repos = "http://cran.us.r-project.org")
+install.packages("ggridges", repos = "http://cran.us.r-project.org")
+install.packages("woe", repos = "http://cran.us.r-project.org")
+install.packages("caret", repos = "http://cran.us.r-project.org")
+```
+
+```{R,, echo=FALSE, include=F}
+library(data.table)
+library(dplyr)
+library(scorecard)
+library(ggplot2)
+library(ggridges)
+library(woe)
+library(Information)
+library(caret)
+library(knitr)
+```
+
+## SIMS DATA 설명
+
+- SIMS DATA 설명 : 기존 NICE 데이터 중 SIMS 에서 관리하고 있는 기업을 선정하여 진행
+
+SIMS 데이터란 “중소기업 지원사업 통합관리시스템”이 보유하고 있는 중앙행정기관, 지방자체단체 또는 관련 기관ᆞ단체의 중소기업 지원사업에 대한 사업정보, 신청ᆞ접수 현황, 지원 이력 등의 자료를 데이터화 한 자료라고 할 수 있다. 
+SIMS 데이터를 통해 재무현황, 결산 등의 데이터로 구성되어 있는 NICE 데이터와 매칭시켜 재무현황 뿐만 아니라 기업의 추가적인 기술력이나 특허정보 등의 비재무적 요소를 분석할 수 있는 활용 방안이 있을 것이라고 판단된다.
+
+- SIMS 데이터 개요
+전문개요 : SIMS 데이터는 크게 사업별 지원이력 정보, 참여기업 기본 정보, 경영지표 등의 기업 현황 정보로 구성되어 있다.  
+모집기간 : 13년 중소기업 지원사업 통합관리시스템(SIMS)가 구축되었고, 모집된 데이터의 경우 19년 10월부터 20년 9월까지 매 분기별로 추출된다. 제공받은 데이터 중 18년 10월 추출된 데이터의 기준으로 10년~17년 관리대상 사업의 이력정보가 담겨있다.
+
+- SIMS 데이터 활용
+SIMS 데이터 중 지원이력 항목(지원기업별 지원정보)과 특허정보를 신용평가에 활용할 수 있는 항목으로 선정하였고 상세 데이터 내용은 아래와 같다.
+1) 자금지원횟수 : 정책자금 융자 또는 신용보증 지원,기술개발지원 지원 횟수를 변수로 만들어 활용하였다.
+2) 특허출원횟수 : 각 기업별 결산년도에 특허 출원 횟수를 변수로 만들어 활용하였다.
+
+- 결산기준 : 2008년 3월 ~ 20017년 (NICE 결산데이터 기준)
+- raw 데이터 수  : NICE data 약 170만개 중 20만개로 구성
+- train/test 데이터 : trian, test 70%, 30% 비율(부도비율도 동일하게 진행)
+- 변수 설명
+
+- 기본 통계 정보 관찰
+
+## WOE 분석
+- 기존 NICE 데이터의 재무비율 중 신용평가를 위한 주요 지표를 위한 재무비율을 선정하여 부도여부에 대한 독립변수들로 선정하여 각 변수별 WOE 값을 계산하고자 한다. 이를 통해, 각 변수별 변화하는 WOE값을 살펴보고 종속변수와 변수들 간의 관계를 도출하고자 한다. 
+- WOE(Weights of Evidence)
+ 
+  WOE란 개별 변수를 등급 구간으로 나눈다고 한다면 개별 등급 구간에서 연체건, 비연체 건이 전체 총 합계 비율로 얼마인지 볼 수 있는 지표이다. 이러한 값의 결과로 연체율 회귀식은 아래와 같은 예시로 계산할 수 있다.
+  $P(default=yes|age,income,job,...)$
+  $= \frac{1}{1+e^{-(B_0+B_1WOE_{age}+B_2WOE_{income}+B_3WOE_{job}+...)}}$
+  
+(1)데이터 구성
+```{r, echo=FALSE, include=TRUE}
+setwd('E:/대학원/금융/스터디 자료/20년 2학기/data')
+train_df_sim <- read.table('train_df_sim.txt', header =T,  fileEncoding="euc-kr" )
+train_df_sim$model <- substr(train_df_sim$model, 2,2) 
+train_df_sim $model <- as.factor(train_df_sim $model)
+train_df_sim $upjong <- as.factor(train_df_sim $upjong)
+train_df_sim $jiwonYN	 <- as.character(train_df_sim $jiwonYN)
+train_df_sim $cc	 <- as.factor(train_df_sim $cc)
+train_df_sim <- train_df_sim[,-c(4,5)]
+head(train_df_sim)
+```
+(2)데이터 분할 (train data / test data)
+데이터를 학습데이터인 Train Data 와 테스트 데이터인 Test data로 7대 3으로 나누어 진행하고자 한다. 즉, 131,452개의 데이터가 Train Data set이고 400개는 Test data set이다. 나누어진 데이터는 임의로 선택되어 진행된다.
+
+(3)변수별 BINNING과 WOE 그래프
+- WOE 테이블 : MIN과 MAX는 해당 각 BIN에 대항되는 재무비율의 최소값과 최대값을 의미한다. BAD와 GOOD은  각 BIN의 그룹의 부도, 정상 횟수를 의미하며 TOTAL은 각 BIN의 총 데이터갯수이다. BAD. GOOD.TOTAL.은 비율로 나타낸 값이며 WOE는 해당되는 BIN의 WOE 값이다. 
+
+1) KK050(EBIT/매출액 %) , EBIT 이익률
+  - 정의 : 해당 변수는 수익성 지표이며 EBIT  이익률이 클 수록 회사의 전반적인 수익성이 높음을 의미하며, 반대인 경우 회사의 전반적인 수익성이 떨어지거나 적자상태임을 의미한다.
+  - BIN : 총 20개의 BIN으로 구성 
+  
+```{r, echo=FALSE, include=TRUE}
+KK050 <- data.frame(woe(Data = train_df_sim, Independent = "KK050", Continuous = TRUE, Dependent = "budo", C_Bin = 20, Bad = 0, Good = 1))
+KK050$WOE[is.infinite(KK050$WOE)] <- 0
+KK050$WOE <- KK050$WOE*0.01 
+KK050
+```
+  - WOE 그래프
+```{R, echo=F, include=TRUE}
+#KK050
+### Inflection point
+### concave upwards to downward  / concave downward to upwards
+### increseing to decreaseing  / decreaseing to increasing
+diff(KK050$WOE)>0          # 증가 T, 감소/변화없음 F
+### positive to negative / negative to postive
+diff( diff(KK050$WOE)>0 )  # -1 c(T,F) 증가하다감소, 0 c(T,T) c(F,F) 유지 , 1 c(F,T) 감소하다 증가 
+infl = c(FALSE,  diff(diff(KK050$WOE)>0)!=0, FALSE)
+data <- data.table(KK050$BIN,KK050$WOE,infl)
+sdata <- data[infl==T,]
+## Smoothing -------------------------------------------------------------------
+smoothing <- loess(KK050$WOE~KK050$BIN, span=0.45)
+xl  <- seq(min(KK050$BIN),max(KK050$BIN), (max(KK050$BIN)-min(KK050$BIN))/10000)
+out <- predict(smoothing, xl)
+infl<- c(diff(diff(out)>0)!=0,F,F)
+
+### LINE ----
+sdata <- data.table(xl,out, infl)
+options(repr.plot.width = 14, repr.plot.height = 8)
+ggplot(data, aes(x=KK050$BIN,y=KK050$WOE)) + geom_path(color="gray") +
+  geom_point(data=sdata, aes(xl, out), size=.1, color="black") +
+  geom_point(mapping =aes(sdata$xl[3940], sdata$out[3940]), color="blue") +
+  geom_point(mapping =aes(sdata$xl[6607], sdata$out[6607]), color="blue") +
+  #geom_point(data=sdata[infl], aes(xl, out), size=2, color="blue", shape=1) +
+  #geom_segment(data=sdata[infl], aes(x=xl, y=-2, xend=xl, yend=out),color='blue', size=0.2) +
+  scale_x_continuous(breaks=seq(0, 20, 1))+
+  scale_y_continuous(expand = c(0.5,0.5)) + 
+  theme_test() +
+  labs(title="EBIT/매출액 WOE",
+  x ="BIN (1~20)", y = "WOE") +
+  theme(plot.title = element_text(hjust = 0.5)) 
+
+```
+```{R}
+a <- subset(KK050, BIN <= 8 )
+a$cum_bad <- cumsum(a$BAD)
+a$cum_good <- cumsum(a$GOOD)
+a$cum_total <- cumsum(a$TOTAL)
+a1 <- rbind(head(a,1), tail(a, 1))
+a2 <- data.table(a1[1,c(2)], a1[2,c(3,14,15,16)])
+
+b <- subset(KK050, BIN > 8 & BIN <=13)
+b$cum_bad <- cumsum(b$BAD)
+b$cum_good <- cumsum(b$GOOD)
+b$cum_total <- cumsum(b$TOTAL)
+b1 <- rbind(head(b,1), tail(b, 1))
+b2 <- data.table(b1[1,c(2)], b1[2,c(3,14,15,16)])
+
+c <- subset(KK050, BIN  > 13 )
+c$cum_bad <- cumsum(c$BAD)
+c$cum_good <- cumsum(c$GOOD)
+c$cum_total <- cumsum(c$TOTAL)
+c1 <- rbind(head(c,1), tail(c, 1))
+c2 <- data.table(c1[1,c(2)], c1[2,c(3,14,15,16)])
+
+total <- rbind(a2,b2,c2)
+BIN <- c(1,2,3)
+total <- rename(total, c("MIN"="V1", "GOOD"="cum_bad", "BAD"="cum_good", "TOTAL"="cum_total"))
+total <- data.frame(BIN, total)
+total
+```
+(2)매출액순이익률(%) : 당기순이익/매출액 (ROS)
+  - 정의 : 기업의 활동성을 나타내는 매출액에서 영업 및 영업외 비용, 세금 등을 모두 제하고 최종적으로 남는 순이익의 비율이 얼마나 되는가를 나타내는 수치로서, 기업경영에 있어서 최종적으로 창출해낸 이익률.
+  - BIN : 총 20개로 구성
+
+```{r, echo=F, include=TRUE}
+KK043 <- data.frame(woe(Data = train_df_sim, Independent = "KK043", Continuous = TRUE, Dependent = "budo", C_Bin = 20, Bad = 0, Good = 1))
+KK043$WOE[is.infinite(KK043$WOE)] <- 0
+KK043$WOE <- KK043$WOE*0.01 
+KK043
+```
+
+```{R,echo=F, include=F}
+#KK043
+diff(KK043$WOE)>0          # 증가 T, 감소/변화없음 F
+diff( diff(KK043$WOE)>0 )  # -1 c(T,F) 증가하다감소, 0 c(T,T) c(F,F) 유지 , 1 c(F,T) 감소하다 증가 
+infl_KK043 = c(FALSE,  diff(diff(KK043$WOE)>0)!=0, FALSE)
+data_KK043 <- data.table(KK043$BIN,KK043$WOE,infl_KK043)
+sdata_KK043 <- data_KK043[infl_KK043==T,]
+```
+  - WOE 그래프
+```{R, echo=F, include=TRUE}
+## Smoothing -------------------------------------------------------------------
+smoothing_KK043 <- loess(KK043$WOE~KK043$BIN, span=0.55)
+xl_KK043  <- seq(min(KK043$BIN),max(KK043$BIN), (max(KK043$BIN)-min(KK043$BIN))/10000)
+out_KK043 <- predict(smoothing_KK043, xl_KK043)
+infl_KK043 <- c(diff(diff(out_KK043)>0)!=0,F,F)
+
+### LINE ----
+sdata_KK043 <- data.table(xl_KK043,out_KK043, infl_KK043)
+options(repr.plot.width = 14, repr.plot.height = 8)
+ggplot(data_KK043, aes(KK043$BIN,KK043$WOE)) + geom_path(color="gray") +
+  geom_point(data=sdata_KK043, aes(xl_KK043, out_KK043), size=.1, color="BLACK") +
+  geom_point(mapping =aes(sdata_KK043$xl_KK043[4263], sdata_KK043$out_KK043[4263]), color="blue") +
+  geom_point(mapping =aes(sdata_KK043$xl_KK043[6783], sdata_KK043$out_KK043[6783]), color="blue") +
+ #geom_point(data=sdata_KK043[infl_KK043], aes(xl_KK043, out_KK043), size=2, color="blue", shape=1) +
+ #geom_segment(data=sdata_KK043[infl_KK043], aes(x=xl_KK043, y=-2, xend=xl_KK043, yend=out_KK043),color='blue', size=0.2) +
+  scale_x_continuous(breaks=seq(0, 20, 1))+
+  scale_y_continuous(expand = c(0.5,0.5)) + 
+  theme_test() +
+  labs(title="매출액순이익률(%)",
+  x ="BIN (1~20)", y = "WOE") +
+  theme(plot.title = element_text(hjust = 0.5)) 
+```
+
+```{R}
+a <- subset(KK043, BIN <= 8 )
+a$cum_bad <- cumsum(a$BAD)
+a$cum_good <- cumsum(a$GOOD)
+a$cum_total <- cumsum(a$TOTAL)
+a1 <- rbind(head(a,1), tail(a, 1))
+a2 <- data.table(a1[1,c(2)], a1[2,c(3,14,15,16)])
+
+b <- subset(KK043, BIN > 8 & BIN <=13)
+b$cum_bad <- cumsum(b$BAD)
+b$cum_good <- cumsum(b$GOOD)
+b$cum_total <- cumsum(b$TOTAL)
+b1 <- rbind(head(b,1), tail(b, 1))
+b2 <- data.table(b1[1,c(2)], b1[2,c(3,14,15,16)])
+
+c <- subset(KK043, BIN  > 13 )
+c$cum_bad <- cumsum(c$BAD)
+c$cum_good <- cumsum(c$GOOD)
+c$cum_total <- cumsum(c$TOTAL)
+c1 <- rbind(head(c,1), tail(c, 1))
+c2 <- data.table(c1[1,c(2)], c1[2,c(3,14,15,16)])
+
+total <- rbind(a2,b2,c2)
+BIN <- c(1,2,3)
+total <- rename(total, c("MIN"="V1", "GOOD"="cum_bad", "BAD"="cum_good", "TOTAL"="cum_total"))
+total <- data.frame(BIN, total)
+total
+```
+
+(3) 이자보상비율(수익성, 안정성)
+  - 정의 : 영업활동으로 창출한 이익으로 이자를 지급할 수 있는 능력(이자지급 능력)을 측정하는 지표
+  - 안정성 지표로 볼 수 있지만, 그만큼 영업활동에 대한 수익성을 볼 수 있는 지표이기 때문에 값이 낮을 수록 이자지급능력이 좋지 않고, 높을 수록 이자지급능력이 크다는 것을 의미한다.
+
+```{r, echo=F, include=F}
+KK103 <- data.frame(woe(Data = train_df_sim, Independent = "KK103", Continuous = TRUE, Dependent = "budo", C_Bin = 20, Bad = 0, Good = 1))
+KK103$WOE[is.infinite(KK103$WOE)] <- 0
+KK103$WOE <- KK103$WOE*0.01 
+```
+
+```{R,echo=F, include=F}
+#KK103
+diff(KK103$WOE)>0          # 증가 T, 감소/변화없음 F
+diff( diff(KK103$WOE)>0 )  # -1 c(T,F) 증가하다감소, 0 c(T,T) c(F,F) 유지 , 1 c(F,T) 감소하다 증가 
+infl_KK103 = c(FALSE,  diff(diff(KK103$WOE)>0)!=0, FALSE)
+data_KK103 <- data.table(KK103$BIN,KK103$WOE,infl_KK103)
+sdata_KK103 <- data_KK103[infl_KK103==T,]
+KK103
+``` 
+
+```{R}
+a <- subset(KK103, BIN <= 5 )
+a$cum_bad <- cumsum(a$BAD)
+a$cum_good <- cumsum(a$GOOD)
+a$cum_total <- cumsum(a$TOTAL)
+a1 <- rbind(head(a,1), tail(a, 1))
+a2 <- data.table(a1[1,c(2)], a1[2,c(3,14,15,16)])
+
+b <- subset(KK103, BIN > 5 & BIN <=10)
+b$cum_bad <- cumsum(b$BAD)
+b$cum_good <- cumsum(b$GOOD)
+b$cum_total <- cumsum(b$TOTAL)
+b1 <- rbind(head(b,1), tail(b, 1))
+b2 <- data.table(b1[1,c(2)], b1[2,c(3,14,15,16)])
+
+C <- subset(KK103, BIN > 10 & BIN <=12)
+c$cum_bad <- cumsum(c$BAD)
+c$cum_good <- cumsum(c$GOOD)
+c$cum_total <- cumsum(c$TOTAL)
+c1 <- rbind(head(c,1), tail(c, 1))
+c2 <- data.table(c1[1,c(2)], c1[2,c(3,14,15,16)])
+
+d <- subset(KK103, BIN  > 12)
+d$cum_bad <- cumsum(d$BAD)
+d$cum_good <- cumsum(d$GOOD)
+d$cum_total <- cumsum(d$TOTAL)
+d1 <- rbind(head(d,1), tail(d, 1))
+d2 <- data.table(d1[1,c(2)], d1[2,c(3,14,15,16)])
+
+total <- rbind(a2,b2,c2,d2)
+BIN <- c(1,2,3,4)
+total <- rename(total, c("MIN"="V1", "GOOD"="cum_bad", "BAD"="cum_good", "TOTAL"="cum_total"))
+total <- data.frame(BIN, total)
+total
+```
+
+  - WOE 그래프
+```{R, echo=F, include=TRUE}
+## Smoothing -------------------------------------------------------------------
+smoothing_KK103<- loess(KK103$WOE~KK103$BIN, span=0.5)
+xl_KK103  <- seq(min(KK103$BIN),max(KK103$BIN), (max(KK103$BIN)-min(KK103$BIN))/10000)
+out_KK103 <- predict(smoothing_KK103, xl_KK103)
+infl_KK103 <- c(diff(diff(out_KK103)>0)!=0,F,F)
+
+### LINE ----
+sdata_KK103 <- data.table(xl_KK103,out_KK103, infl_KK103)
+options(repr.plot.width = 14, repr.plot.height = 8)
+ggplot(data_KK103, aes(KK103$BIN,KK103$WOE)) + geom_path(color="gray") +
+  geom_point(data=sdata_KK103, aes(xl_KK103, out_KK103), size=.1, color="BLACK") +
+  geom_point(mapping =aes(sdata_KK103$xl_KK103[2256], sdata_KK103$out_KK103[2256]), color="blue") +
+  geom_point(mapping =aes(sdata_KK103$xl_KK103[5125], sdata_KK103$out_KK103[5125]), color="blue") +
+  geom_point(mapping =aes(sdata_KK103$xl_KK103[6085], sdata_KK103$out_KK103[6085]), color="blue") +
+  scale_x_continuous(breaks=seq(0, 20, 1)) +
+  scale_y_continuous(expand = c(0.5,0.5)) + 
+  theme_test() +
+  labs(title="이자보상비율(%)",
+  x ="BIN (1~20)", y = "WOE") +
+  theme(plot.title = element_text(hjust = 0.5)) 
+```
+
+```{R}
+a <- subset(KK103, BIN <= 5 )
+a$cum_bad <- cumsum(a$BAD)
+a$cum_good <- cumsum(a$GOOD)
+a$cum_total <- cumsum(a$TOTAL)
+a1 <- rbind(head(a,1), tail(a, 1))
+a2 <- data.table(a1[1,c(2)], a1[2,c(3,14,15,16)])
+
+b <- subset(KK103, BIN > 5 & BIN <=10)
+b$cum_bad <- cumsum(b$BAD)
+b$cum_good <- cumsum(b$GOOD)
+b$cum_total <- cumsum(b$TOTAL)
+b1 <- rbind(head(b,1), tail(b, 1))
+b2 <- data.table(b1[1,c(2)], b1[2,c(3,14,15,16)])
+
+c <- subset(KK103, BIN > 10 & BIN <=12)
+c$cum_bad <- cumsum(c$BAD)
+c$cum_good <- cumsum(c$GOOD)
+c$cum_total <- cumsum(c$TOTAL)
+c1 <- rbind(head(c,1), tail(c, 1))
+c2 <- data.table(c1[1,c(2)], c1[2,c(3,14,15,16)])
+
+d <- subset(KK103, BIN  > 12)
+d$cum_bad <- cumsum(d$BAD)
+d$cum_good <- cumsum(d$GOOD)
+d$cum_total <- cumsum(d$TOTAL)
+d1 <- rbind(head(d,1), tail(d, 1))
+d2 <- data.table(d1[1,c(2)], d1[2,c(3,14,15,16)])
+
+total <- rbind(a2,b2,c2,d2)
+BIN <- c(1,2,3,4)
+total <- rename(total, c("MIN"="V1", "GOOD"="cum_bad", "BAD"="cum_good", "TOTAL"="cum_total"))
+total <- data.frame(BIN, total)
+total
+```
+(4)ROA (총자산이익률%) 
+  - 정의: (자신의 투자금뿐만 아니라 타인에게서 빌린 투자금을 모두 더한) 총자본(자산) 대비 얼마의 순이익을 벌어들였는지에 대한 보여주는 지표.
+  - BIN
+  - WOE 그래프
+```{R, echo=F, include=T}
+KK106 <- data.frame(woe(Data = train_df_sim, Independent = "KK106", Continuous = TRUE, Dependent = "budo", C_Bin = 20, Bad = 0, Good = 1))
+KK106$WOE[is.infinite(KK106$WOE)] <- 0
+KK106$WOE <- KK106$WOE*0.01 
+KK106
+```
+
+``````{R,echo=F, include=F}
+#KK106
+diff(KK106$WOE)>0          # 증가 T, 감소/변화없음 F
+diff( diff(KK106$WOE)>0 )  # -1 c(T,F) 증가하다감소, 0 c(T,T) c(F,F) 유지 , 1 c(F,T) 감소하다 증가 
+infl_KK106 = c(FALSE,  diff(diff(KK106$WOE)>0)!=0, FALSE)
+data_KK106 <- data.table(KK106$BIN,KK106$WOE,infl_KK106)
+sdata_KK106 <- data_KK106[infl_KK106==T,]
+
+```
+
+
+```{R, echo=F, include=TRUE}
+## Smoothing -------------------------------------------------------------------
+smoothing_KK106<- loess(KK106$WOE~KK106$BIN, span=0.45)
+xl_KK106  <- seq(min(KK106$BIN),max(KK106$BIN), (max(KK106$BIN)-min(KK106$BIN))/10000)
+out_KK106 <- predict(smoothing_KK106, xl_KK106)
+infl_KK106<- c(diff(diff(out_KK106)>0)!=0,F,F)
+
+### LINE ----
+sdata_KK106 <- data.table(xl_KK106,out_KK106, infl_KK106)
+options(repr.plot.width = 14, repr.plot.height = 8)
+ggplot(data_KK106, aes(KK106$BIN,KK106$WOE)) + geom_path(color="gray") +
+  geom_point(data=sdata_KK106, aes(xl_KK106, out_KK106), size=.1, color="BLACK") +
+  geom_point(mapping =aes(sdata_KK106$xl_KK106[3180], sdata_KK106$out_KK106[3180]), color="blue") +
+  geom_point(mapping =aes(sdata_KK106$xl_KK106[6535], sdata_KK106$out_KK106[6535]), color="blue") +
+  scale_x_continuous(breaks=seq(0, 20, 1)) +
+  scale_y_continuous(expand = c(0.5,0.5)) + 
+  theme_test() +
+  labs(title="이자보상비율(%)",
+  x ="BIN (1~20)", y = "WOE") +
+  theme(plot.title = element_text(hjust = 0.5)) 
+```
+
+```{R}
+a <- subset(KK106, BIN <= 7 )
+a$cum_bad <- cumsum(a$BAD)
+a$cum_good <- cumsum(a$GOOD)
+a$cum_total <- cumsum(a$TOTAL)
+a1 <- rbind(head(a,1), tail(a, 1))
+a2 <- data.table(a1[1,c(2)], a1[2,c(3,14,15,16)])
+
+b <- subset(KK106, BIN > 7 & BIN <=13)
+b$cum_bad <- cumsum(b$BAD)
+b$cum_good <- cumsum(b$GOOD)
+b$cum_total <- cumsum(b$TOTAL)
+b1 <- rbind(head(b,1), tail(b, 1))
+b2 <- data.table(b1[1,c(2)], b1[2,c(3,14,15,16)])
+
+c <- subset(KK106, BIN > 13)
+c$cum_bad <- cumsum(c$BAD)
+c$cum_good <- cumsum(c$GOOD)
+c$cum_total <- cumsum(c$TOTAL)
+c1 <- rbind(head(c,1), tail(c, 1))
+c2 <- data.table(c1[1,c(2)], c1[2,c(3,14,15,16)])
+
+total <- rbind(a2,b2,c2)
+BIN <- c(1,2,3)
+total <- rename(total, c("MIN"="V1", "GOOD"="cum_bad", "BAD"="cum_good", "TOTAL"="cum_total"))
+total <- data.frame(BIN, total)
+total
+```
+(5)ROE (자기자본이익률%)
+```{R, echo=F, include=T}
+KK039 <- data.frame(woe(Data = train_df_sim, Independent = "KK039", Continuous = TRUE, Dependent = "budo", C_Bin = 20, Bad = 0, Good = 1))
+KK039$WOE[is.infinite(KK039$WOE)] <- 0
+KK039$WOE <- KK039$WOE*0.01 
+KK039
+```
+
+```{R,echo=F, include=F}
+#KK039
+diff(KK039$WOE)>0          # 증가 T, 감소/변화없음 F
+diff( diff(KK039$WOE)>0 )  # -1 c(T,F) 증가하다감소, 0 c(T,T) c(F,F) 유지 , 1 c(F,T) 감소하다 증가 
+infl_KK039 = c(FALSE,  diff(diff(KK039$WOE)>0)!=0, FALSE)
+data_KK039 <- data.table(KK039$BIN,KK039$WOE,infl_KK039)
+sdata_KK039 <- data_KK039[infl_KK039==T,]
+```
+
+```{r, echo=F, include=TRUE}
+## Smoothing -------------------------------------------------------------------
+smoothing_KK039<- loess(KK039$WOE~KK039$BIN, span=0.5)
+xl_KK039  <- seq(min(KK039$BIN),max(KK039$BIN), (max(KK039$BIN)-min(KK039$BIN))/10000)
+out_KK039 <- predict(smoothing_KK039, xl_KK039)
+infl_KK039<- c(diff(diff(out_KK039)>0)!=0,F,F)
+
+### LINE ----
+sdata_KK039 <- data.table(xl_KK039,out_KK039, infl_KK039)
+options(repr.plot.width = 14, repr.plot.height = 8)
+ggplot(data_KK039, aes(KK039$BIN,KK039$WOE)) + geom_path(color="gray") +
+  geom_point(data=sdata_KK039, aes(xl_KK039, out_KK039), size=.1, color="BLACK") +
+  geom_point(mapping =aes(sdata_KK039$xl_KK039[2320], sdata_KK039$out_KK039[2320]), color="blue") +
+  geom_point(mapping =aes(sdata_KK039$xl_KK039[4022], sdata_KK039$out_KK039[4022]), color="blue") +
+  geom_point(mapping =aes(sdata_KK039$xl_KK039[8210], sdata_KK039$out_KK039[8210]), color="blue") +
+  scale_x_continuous(breaks=seq(0, 20, 1)) +
+  scale_y_continuous(breaks = seq(-2, 2, by=1), limits=c(-2,2)) + 
+  theme_test() +
+  labs(title="이자보상비율(%)",
+  x ="BIN (1~20)", y = "WOE") +
+  theme(plot.title = element_text(hjust = 0.5)) 
+
+```
+
+```{R}
+a <- subset(KK039, BIN <= 5 )
+a$cum_bad <- cumsum(a$BAD)
+a$cum_good <- cumsum(a$GOOD)
+a$cum_total <- cumsum(a$TOTAL)
+a1 <- rbind(head(a,1), tail(a, 1))
+a2 <- data.table(a1[1,c(2)], a1[2,c(3,14,15,16)])
+
+b <- subset(KK039, BIN > 5 & BIN <=8)
+b$cum_bad <- cumsum(b$BAD)
+b$cum_good <- cumsum(b$GOOD)
+b$cum_total <- cumsum(b$TOTAL)
+b1 <- rbind(head(b,1), tail(b, 1))
+b2 <- data.table(b1[1,c(2)], b1[2,c(3,14,15,16)])
+
+c <- subset(KK039, BIN > 8 & BIN <=16)
+c$cum_bad <- cumsum(c$BAD)
+c$cum_good <- cumsum(c$GOOD)
+c$cum_total <- cumsum(c$TOTAL)
+c1 <- rbind(head(c,1), tail(c, 1))
+c2 <- data.table(c1[1,c(2)], c1[2,c(3,14,15,16)])
+
+d <- subset(KK039, BIN > 16)
+d$cum_bad <- cumsum(d$BAD)
+d$cum_good <- cumsum(d$GOOD)
+d$cum_total <- cumsum(d$TOTAL)
+d1 <- rbind(head(d,1), tail(d, 1))
+d2 <- data.table(d1[1,c(2)], d1[2,c(3,14,15,16)])
+
+total <- rbind(a2,b2,c2,d2)
+BIN <- c(1,2,3,4)
+total <- rename(total, c("MIN"="V1", "GOOD"="cum_bad", "BAD"="cum_good", "TOTAL"="cum_total"))
+total <- data.frame(BIN, total)
+total
+```
+(6)OCF 대 매출액비용
+```{R, echo=F, include=TRUE}
+KK097 <- data.frame(woe(Data = train_df_sim, Independent = "KK097", Continuous = TRUE, Dependent = "budo", C_Bin = 20, Bad = 0, Good = 1))
+KK097$WOE[is.infinite(KK097$WOE)] <- 0
+KK097$WOE <- KK097$WOE*0.01 
+KK097
+
+```
+
+```{R,echo=F, include=F}
+#KK097
+diff(KK097$WOE)>0          # 증가 T, 감소/변화없음 F
+diff( diff(KK097$WOE)>0 )  # -1 c(T,F) 증가하다감소, 0 c(T,T) c(F,F) 유지 , 1 c(F,T) 감소하다 증가 
+infl_KK097 = c(FALSE,  diff(diff(KK097$WOE)>0)!=0, FALSE)
+data_KK097 <- data.table(KK097$BIN,KK097$WOE,infl_KK097)
+sdata_KK097 <- data_KK097[infl_KK097==T,]
+
+```
+
+```{r,echo=F, include=TRUE}
+## Smoothing -------------------------------------------------------------------
+smoothing_KK097<- loess(KK097$WOE~KK097$BIN, span=0.45)
+xl_KK097  <- seq(min(KK097$BIN),max(KK097$BIN), (max(KK097$BIN)-min(KK097$BIN))/10000)
+out_KK097 <- predict(smoothing_KK097, xl_KK097)
+infl_KK097<- c(diff(diff(out_KK097)>0)!=0,F,F)
+
+### LINE ----
+sdata_KK097 <- data.table(xl_KK097,out_KK097, infl_KK097)
+options(repr.plot.width = 14, repr.plot.height = 8)
+ggplot(data_KK097, aes(KK097$BIN,KK097$WOE)) + geom_path(color="gray") +
+  geom_point(data=sdata_KK097, aes(xl_KK097, out_KK097), size=.1, color="BLACK") + 
+  geom_point(mapping =aes(sdata_KK097$xl_KK097[3184], sdata_KK097$out_KK097[3184]), color="blue") +
+  geom_point(mapping =aes(sdata_KK097$xl_KK097[7072], sdata_KK097$out_KK097[7072]), color="blue") +
+  geom_point(mapping =aes(sdata_KK097$xl_KK097[9079], sdata_KK097$out_KK097[9079]), color="blue") +
+  scale_x_continuous(breaks=seq(0, 20, 1)) +
+  scale_y_continuous(breaks = seq(-2, 2, by=1), limits=c(-2,2)) + 
+  theme_test() +
+  labs(title="이자보상비율(%)",
+  x ="BIN (1~20)", y = "WOE") +
+  theme(plot.title = element_text(hjust = 0.5)) 
+```
+
+```{r}
+a <- subset(KK097, BIN <= 7 )
+a$cum_bad <- cumsum(a$BAD)
+a$cum_good <- cumsum(a$GOOD)
+a$cum_total <- cumsum(a$TOTAL)
+a1 <- rbind(head(a,1), tail(a, 1))
+a2 <- data.table(a1[1,c(2)], a1[2,c(3,14,15,16)])
+
+b <- subset(KK097, BIN > 7 & BIN <=14)
+b$cum_bad <- cumsum(b$BAD)
+b$cum_good <- cumsum(b$GOOD)
+b$cum_total <- cumsum(b$TOTAL)
+b1 <- rbind(head(b,1), tail(b, 1))
+b2 <- data.table(b1[1,c(2)], b1[2,c(3,14,15,16)])
+
+c <- subset(KK097, BIN > 14 & BIN <=17)
+c$cum_bad <- cumsum(c$BAD)
+c$cum_good <- cumsum(c$GOOD)
+c$cum_total <- cumsum(c$TOTAL)
+c1 <- rbind(head(c,1), tail(c, 1))
+c2 <- data.table(c1[1,c(2)], c1[2,c(3,14,15,16)])
+
+d <- subset(KK097, BIN > 17)
+d$cum_bad <- cumsum(d$BAD)
+d$cum_good <- cumsum(d$GOOD)
+d$cum_total <- cumsum(d$TOTAL)
+d1 <- rbind(head(d,1), tail(d, 1))
+d2 <- data.table(d1[1,c(2)], d1[2,c(3,14,15,16)])
+
+total <- rbind(a2,b2,c2,d2)
+BIN <- c(1,2,3,4)
+total <- rename(total, c("MIN"="V1", "GOOD"="cum_bad", "BAD"="cum_good", "TOTAL"="cum_total"))
+total <- data.frame(BIN, total)
+total
+```
+
+(7)순차입금/EBITDA
+```{R, echo=F, include=TRUE}
+KK018 <- data.frame(woe(Data = train_df_sim, Independent = "KK018", Continuous = TRUE, Dependent = "budo", C_Bin = 20, Bad = 0, Good = 1))
+KK018$WOE[is.infinite(KK018$WOE)] <- 0
+KK018$WOE <- KK018$WOE*0.01 
+KK018
+```
+
+```{R,echo=F, include=F}
+#KK018
+diff(KK018$WOE)>0          # 증가 T, 감소/변화없음 F
+diff( diff(KK018$WOE)>0 )  # -1 c(T,F) 증가하다감소, 0 c(T,T) c(F,F) 유지 , 1 c(F,T) 감소하다 증가 
+infl_KK018 = c(FALSE,  diff(diff(KK018$WOE)>0)!=0, FALSE)
+data_KK018 <- data.table(KK018$BIN,KK018$WOE,infl_KK018)
+sdata_KK018 <- data_KK018[infl_KK018==T,]
+```
+
+```{r,echo=F, include=TRUE}
+## Smoothing -------------------------------------------------------------------
+smoothing_KK018<- loess(KK018$WOE~KK018$BIN, span=0.42)
+xl_KK018  <- seq(min(KK018$BIN),max(KK018$BIN), (max(KK018$BIN)-min(KK018$BIN))/10000)
+out_KK018 <- predict(smoothing_KK018, xl_KK018)
+infl_KK018<- c(diff(diff(out_KK018)>0)!=0,F,F)
+
+### LINE ----
+sdata_KK018 <- data.table(xl_KK018,out_KK018, infl_KK018)
+options(repr.plot.width = 14, repr.plot.height = 8)
+ggplot(data_KK018, aes(KK018$BIN,KK018$WOE)) + geom_path(color="gray") +
+  geom_point(data=sdata_KK018, aes(xl_KK018, out_KK018), size=.1, color="BLACK") +
+  geom_point(mapping =aes(sdata_KK018$xl_KK018[3514], sdata_KK018$out_KK018[3514]), color="blue") +
+  geom_point(mapping =aes(sdata_KK018$xl_KK018[5483], sdata_KK018$out_KK018[5483]), color="blue") +
+    geom_point(mapping =aes(sdata_KK018$xl_KK018[7751], sdata_KK018$out_KK018[7751]), color="blue") +
+  scale_x_continuous(breaks=seq(0, 30, 1)) +
+  scale_y_continuous(breaks = seq(-2, 2, by=1), limits=c(-2,2)) + 
+  theme_test() +
+  labs(title="이자보상비율(%)",
+  x ="BIN (1~20)", y = "WOE") +
+  theme(plot.title = element_text(hjust = 0.5)) 
+```
+
+```{r}
+a <- subset(KK018, BIN <= 7 )
+a$cum_bad <- cumsum(a$BAD)
+a$cum_good <- cumsum(a$GOOD)
+a$cum_total <- cumsum(a$TOTAL)
+a1 <- rbind(head(a,1), tail(a, 1))
+a2 <- data.table(a1[1,c(2)], a1[2,c(3,14,15,16)])
+
+b <- subset(KK018, BIN > 7 & BIN <=11)
+b$cum_bad <- cumsum(b$BAD)
+b$cum_good <- cumsum(b$GOOD)
+b$cum_total <- cumsum(b$TOTAL)
+b1 <- rbind(head(b,1), tail(b, 1))
+b2 <- data.table(b1[1,c(2)], b1[2,c(3,14,15,16)])
+
+c <- subset(KK018, BIN > 11 & BIN <=15)
+c$cum_bad <- cumsum(c$BAD)
+c$cum_good <- cumsum(c$GOOD)
+c$cum_total <- cumsum(c$TOTAL)
+c1 <- rbind(head(c,1), tail(c, 1))
+c2 <- data.table(c1[1,c(2)], c1[2,c(3,14,15,16)])
+
+d <- subset(KK018, BIN > 15)
+d$cum_bad <- cumsum(d$BAD)
+d$cum_good <- cumsum(d$GOOD)
+d$cum_total <- cumsum(d$TOTAL)
+d1 <- rbind(head(d,1), tail(d, 1))
+d2 <- data.table(d1[1,c(2)], d1[2,c(3,14,15,16)])
+
+total <- rbind(a2,b2,c2,d2)
+BIN <- c(1,2,3,4)
+total <- rename(total, c("MIN"="V1", "GOOD"="cum_bad", "BAD"="cum_good", "TOTAL"="cum_total"))
+total <- data.frame(BIN, total)
+total
+```
+
+(8)EBIT/총금융비용
+```{R,echo=F, include=TRUE}
+KK016 <- data.frame(woe(Data = train_df_sim, Independent = "KK016", Continuous = TRUE, Dependent = "budo", C_Bin = 20, Bad = 0, Good = 1))
+KK016$WOE[is.infinite(KK016$WOE)] <- 0
+KK016$WOE <- KK016$WOE*0.01 
+KK018
+```
+```{R,echo=F, include=F}
+#KK016
+diff(KK016$WOE)>0          # 증가 T, 감소/변화없음 F
+diff( diff(KK016$WOE)>0 )  # -1 c(T,F) 증가하다감소, 0 c(T,T) c(F,F) 유지 , 1 c(F,T) 감소하다 증가 
+infl_KK016 = c(FALSE,  diff(diff(KK016$WOE)>0)!=0, FALSE)
+data_KK016 <- data.table(KK016$BIN,KK016$WOE,infl_KK016)
+sdata_KK016 <- data_KK016[infl_KK016==T,]
+```
+
+```{R,echo=F, include=TRUE}
+## Smoothing -------------------------------------------------------------------
+smoothing_KK016<- loess(KK016$WOE~KK016$BIN, span=0.43)
+xl_KK016  <- seq(min(KK016$BIN),max(KK016$BIN), (max(KK016$BIN)-min(KK016$BIN))/10000)
+out_KK016 <- predict(smoothing_KK016, xl_KK016)
+infl_KK016 <- c(diff(diff(out_KK016)>0)!=0,F,F)
+
+### LINE ----
+sdata_KK016 <- data.table(xl_KK016,out_KK016, infl_KK016)
+options(repr.plot.width = 14, repr.plot.height = 8)
+ggplot(data_KK016, aes(KK016$BIN,KK016$WOE)) + geom_path(color="gray") +
+  geom_point(data=sdata_KK016, aes(xl_KK016, out_KK016), size=.1, color="black") +
+  geom_point(mapping =aes(sdata_KK016$xl_KK016[1668], sdata_KK016$out_KK016[1668]), color="blue") +
+  geom_point(mapping =aes(sdata_KK016$xl_KK016[6113], sdata_KK016$out_KK016[6113]), color="blue") +
+  scale_x_continuous(breaks=seq(0, 30, 1)) +
+  scale_y_continuous(breaks = seq(-2, 2, by=1), limits=c(-2,2)) + 
+  theme_test() +
+  labs(title="이자보상비율(%)",
+  x ="BIN (1~20)", y = "WOE") +
+  theme(plot.title = element_text(hjust = 0.5)) 
+```
+
+```{r}
+a <- subset(KK016, BIN <= 4 )
+a$cum_bad <- cumsum(a$BAD)
+a$cum_good <- cumsum(a$GOOD)
+a$cum_total <- cumsum(a$TOTAL)
+a1 <- rbind(head(a,1), tail(a, 1))
+a2 <- data.table(a1[1,c(2)], a1[2,c(3,14,15,16)])
+
+b <- subset(KK016, BIN > 4 & BIN <=12)
+b$cum_bad <- cumsum(b$BAD)
+b$cum_good <- cumsum(b$GOOD)
+b$cum_total <- cumsum(b$TOTAL)
+b1 <- rbind(head(b,1), tail(b, 1))
+b2 <- data.table(b1[1,c(2)], b1[2,c(3,14,15,16)])
+
+c <- subset(KK016, BIN > 12)
+c$cum_bad <- cumsum(c$BAD)
+c$cum_good <- cumsum(c$GOOD)
+c$cum_total <- cumsum(c$TOTAL)
+c1 <- rbind(head(c,1), tail(c, 1))
+c2 <- data.table(c1[1,c(2)], c1[2,c(3,14,15,16)])
+
+total <- rbind(a2,b2,c2)
+BIN <- c(1,2,3)
+total <- rename(total, c("MIN"="V1", "GOOD"="cum_bad", "BAD"="cum_good", "TOTAL"="cum_total"))
+total <- data.frame(BIN, total)
+total
+```
+
+(9)EBITDA/총금융비용
+```{R,echo=F, include=T}
+KK015 <- data.frame(woe(Data = train_df_sim, Independent = "KK015", Continuous = TRUE, Dependent = "budo", C_Bin = 20, Bad = 0, Good = 1))
+KK015$WOE[is.infinite(KK015$WOE)] <- 0
+KK015$WOE <- KK015$WOE*0.01 
+KK015
+```
+
+```{R,echo=F, include=F}
+#KK015
+diff(KK015$WOE)>0          # 증가 T, 감소/변화없음 F
+diff( diff(KK015$WOE)>0 )  # -1 c(T,F) 증가하다감소, 0 c(T,T) c(F,F) 유지 , 1 c(F,T) 감소하다 증가 
+infl_KK015 = c(FALSE,  diff(diff(KK015$WOE)>0)!=0, FALSE)
+data_KK015 <- data.table(KK015$BIN,KK015$WOE,infl_KK015)
+sdata_KK015 <- data_KK015[infl_KK015==T,]
+
+```
+
+```{r,echo=F, include=TRUE}
+## Smoothing -------------------------------------------------------------------
+smoothing_KK015<- loess(KK015$WOE~KK015$BIN, span=0.43)
+xl_KK015  <- seq(min(KK015$BIN),max(KK015$BIN), (max(KK015$BIN)-min(KK015$BIN))/10000)
+out_KK015 <- predict(smoothing_KK015, xl_KK015)
+infl_KK015<- c(diff(diff(out_KK015)>0)!=0,F,F)
+
+### LINE ----
+sdata_KK015 <- data.table(xl_KK015,out_KK015, infl_KK015)
+options(repr.plot.width = 14, repr.plot.height = 8)
+ggplot(data_KK015, aes(KK015$BIN,KK015$WOE)) + geom_path(color="gray") +
+  geom_point(data=sdata_KK015, aes(xl_KK015, out_KK015), size=.1, color="black") +
+  geom_point(mapping =aes(sdata_KK015$xl_KK015[1668], sdata_KK015$out_KK015[1668]), color="blue") +
+  geom_point(mapping =aes(sdata_KK015$xl_KK015[6113], sdata_KK015$out_KK015[6113]), color="blue") +
+    geom_point(mapping =aes(sdata_KK015$xl_KK015[6120], sdata_KK015$out_KK015[6120]), color="blue") +
+  scale_x_continuous(breaks=seq(0, 30, 1)) +
+  scale_y_continuous(breaks = seq(-2, 2, by=1), limits=c(-2,2)) + 
+  theme_test() +
+  labs(title="이자보상비율(%)",
+  x ="BIN (1~20)", y = "WOE") +
+  theme(plot.title = element_text(hjust = 0.5)) 
+```
+
+
+```{r}
+a <- subset(KK015, BIN <= 4 )
+a$cum_bad <- cumsum(a$BAD)
+a$cum_good <- cumsum(a$GOOD)
+a$cum_total <- cumsum(a$TOTAL)
+a1 <- rbind(head(a,1), tail(a, 1))
+a2 <- data.table(a1[1,c(2)], a1[2,c(3,14,15,16)])
+
+b <- subset(KK015, BIN > 4 & BIN <=12)
+b$cum_bad <- cumsum(b$BAD)
+b$cum_good <- cumsum(b$GOOD)
+b$cum_total <- cumsum(b$TOTAL)
+b1 <- rbind(head(b,1), tail(b, 1))
+b2 <- data.table(b1[1,c(2)], b1[2,c(3,14,15,16)])
+
+c <- subset(KK015, BIN > 12)
+c$cum_bad <- cumsum(c$BAD)
+c$cum_good <- cumsum(c$GOOD)
+c$cum_total <- cumsum(c$TOTAL)
+c1 <- rbind(head(c,1), tail(c, 1))
+c2 <- data.table(c1[1,c(2)], c1[2,c(3,14,15,16)])
+
+total <- rbind(a2,b2,c2)
+BIN <- c(1,2,3)
+total <- rename(total, c("MIN"="V1", "GOOD"="cum_bad", "BAD"="cum_good", "TOTAL"="cum_total"))
+total <- data.frame(BIN, total)
+total
+```
+
+(10)부채비율 %
+
+```{R,echo=F, include=T}
+KK057 <- data.frame(woe(Data = train_df_sim, Independent = "KK057", Continuous = TRUE, Dependent = "budo", C_Bin = 20, Bad = 0, Good = 1))
+KK057$WOE[is.infinite(KK057$WOE)] <- 0
+KK057$WOE <- KK057$WOE*0.01 
+```
+
+```{R,echo=F, include=F}
+#KK057
+diff(KK057$WOE)>0          # 증가 T, 감소/변화없음 F
+diff( diff(KK057$WOE)>0 )  # -1 c(T,F) 증가하다감소, 0 c(T,T) c(F,F) 유지 , 1 c(F,T) 감소하다 증가 
+infl_KK057 = c(FALSE,  diff(diff(KK057$WOE)>0)!=0, FALSE)
+data_KK057 <- data.table(KK057$BIN,KK057$WOE,infl_KK057)
+sdata_KK057 <- data_KK057[infl_KK057==T,]
+```
+
+```{r,echo=F, include=TRUE}
+## Smoothing -------------------------------------------------------------------
+smoothing_KK057<- loess(KK057$WOE~KK057$BIN, span=0.45)
+xl_KK057  <- seq(min(KK057$BIN),max(KK057$BIN), (max(KK057$BIN)-min(KK057$BIN))/10000)
+out_KK057 <- predict(smoothing_KK057, xl_KK057)
+infl_KK057<- c(diff(diff(out_KK057)>0)!=0,F,F)
+
+### LINE ----
+sdata_KK057 <- data.table(xl_KK057,out_KK057, infl_KK057)
+options(repr.plot.width = 14, repr.plot.height = 8)
+ggplot(data_KK057, aes(KK057$BIN,KK057$WOE)) + geom_path(color="gray") +
+  geom_point(data=sdata_KK057, aes(xl_KK057, out_KK057), size=.1, color="black") +
+ geom_point(mapping =aes(sdata_KK057$xl_KK057[1118], sdata_KK057$out_KK057[1118]), color="blue", size=2) +
+  geom_point(mapping =aes(sdata_KK057$xl_KK057[6668], sdata_KK057$out_KK057[6668]), color="blue", size=2) +
+    geom_point(mapping =aes(sdata_KK057$xl_KK057[8335], sdata_KK057$out_KK057[8335]), color="blue", size=2) +
+  scale_x_continuous(breaks=seq(0, 30, 1)) +
+  scale_y_continuous(breaks = seq(-2, 2, by=1), limits=c(-2,2)) + 
+  theme_test() +
+  labs(title="이자보상비율(%)",
+  x ="BIN (1~20)", y = "WOE") +
+  theme(plot.title = element_text(hjust = 0.5)) 
+```
+
+```{r}
+a <- subset(KK057, BIN <= 3 )
+a$cum_bad <- cumsum(a$BAD)
+a$cum_good <- cumsum(a$GOOD)
+a$cum_total <- cumsum(a$TOTAL)
+a1 <- rbind(head(a,1), tail(a, 1))
+a2 <- data.table(a1[1,c(2)], a1[2,c(3,14,15,16)])
+
+b <- subset(KK057, BIN > 3 & BIN <=13)
+b$cum_bad <- cumsum(b$BAD)
+b$cum_good <- cumsum(b$GOOD)
+b$cum_total <- cumsum(b$TOTAL)
+b1 <- rbind(head(b,1), tail(b, 1))
+b2 <- data.table(b1[1,c(2)], b1[2,c(3,14,15,16)])
+
+c <- subset(KK057, BIN > 13 & BIN <=16)
+c$cum_bad <- cumsum(c$BAD)
+c$cum_good <- cumsum(c$GOOD)
+c$cum_total <- cumsum(c$TOTAL)
+c1 <- rbind(head(c,1), tail(c, 1))
+c2 <- data.table(c1[1,c(2)], c1[2,c(3,14,15,16)])
+
+
+d <- subset(KK057, BIN > 16)
+d$cum_bad <- cumsum(d$BAD)
+d$cum_good <- cumsum(d$GOOD)
+d$cum_total <- cumsum(d$TOTAL)
+d1 <- rbind(head(d,1), tail(d, 1))
+d2 <- data.table(d1[1,c(2)], d1[2,c(3,14,15,16)])
+
+total <- rbind(a2,b2,c2,d2)
+BIN <- c(1,2,3,4)
+total <- rename(total, c("MIN"="V1", "GOOD"="cum_bad", "BAD"="cum_good", "TOTAL"="cum_total"))
+total <- data.frame(BIN, total)
+total
+```
+
+(11) 단기차입금의존도
+```{r,echo=F, include=TRUE}
+KK112 <- data.frame(woe(Data = train_df_sim, Independent = "KK112", Continuous = TRUE, Dependent = "budo", C_Bin = 20, Bad = 0, Good = 1))
+KK112$WOE[is.infinite(KK112$WOE)] <- 0
+KK112$WOE <- KK112$WOE*0.01 
+KK112
+```
+
+```{r,echo=F, include=F}
+#KK112
+diff(KK112$WOE)>0          # 증가 T, 감소/변화없음 F
+diff( diff(KK112$WOE)>0 )  # -1 c(T,F) 증가하다감소, 0 c(T,T) c(F,F) 유지 , 1 c(F,T) 감소하다 증가 
+infl_KK112 = c(FALSE,  diff(diff(KK112$WOE)>0)!=0, FALSE)
+data_KK112 <- data.table(KK112$BIN,KK112$WOE,infl_KK112)
+sdata_KK112 <- data_KK112[infl_KK112==T,]
+```
+
+```{r,echo=F, include=TRUE}
+## Smoothing -------------------------------------------------------------------
+smoothing_KK112<- loess(KK112$WOE~KK112$BIN, span=0.5)
+xl_KK112  <- seq(min(KK112$BIN),max(KK112$BIN), (max(KK112$BIN)-min(KK112$BIN))/10000)
+out_KK112 <- predict(smoothing_KK112, xl_KK112)
+infl_KK112<- c(diff(diff(out_KK112)>0)!=0,F,F)
+
+### LINE ----
+sdata_KK112 <- data.table(xl_KK112,out_KK112, infl_KK112)
+options(repr.plot.width = 14, repr.plot.height = 8)
+ggplot(data_KK112, aes(KK112$BIN,KK112$WOE)) + geom_path(color="gray") +
+  geom_point(data=sdata_KK112, aes(xl_KK112, out_KK112), size=.1, color="black") +
+  geom_point(data=sdata_KK112[infl_KK112], aes(xl_KK112, out_KK112), size=2, color="blue") +
+  geom_segment(data=sdata_KK112[infl_KK112], aes(x=xl_KK112, y=-2, xend=xl_KK112, yend=out_KK112),color='blue', size=0.2) +
+  scale_x_continuous(breaks=seq(0, 30, 1)) +
+  scale_y_continuous(breaks = seq(-2, 2, by=1), limits=c(-2,2)) + 
+  theme_test() +
+  labs(title="이자보상비율(%)",
+  x ="BIN (1~20)", y = "WOE") +
+  theme(plot.title = element_text(hjust = 0.5)) 
+```
+
+```{r}
+a <- subset(KK112, BIN <= 6 )
+a$cum_bad <- cumsum(a$BAD)
+a$cum_good <- cumsum(a$GOOD)
+a$cum_total <- cumsum(a$TOTAL)
+a1 <- rbind(head(a,1), tail(a, 1))
+a2 <- data.table(a1[1,c(2)], a1[2,c(3,14,15,16)])
+
+b <- subset(KK112, BIN > 6 & BIN <=9)
+b$cum_bad <- cumsum(b$BAD)
+b$cum_good <- cumsum(b$GOOD)
+b$cum_total <- cumsum(b$TOTAL)
+b1 <- rbind(head(b,1), tail(b, 1))
+b2 <- data.table(b1[1,c(2)], b1[2,c(3,14,15,16)])
+
+c <- subset(KK112, BIN > 9 & BIN <=12)
+c$cum_bad <- cumsum(c$BAD)
+c$cum_good <- cumsum(c$GOOD)
+c$cum_total <- cumsum(c$TOTAL)
+c1 <- rbind(head(c,1), tail(c, 1))
+c2 <- data.table(c1[1,c(2)], c1[2,c(3,14,15,16)])
+
+
+d <- subset(KK112, BIN > 12 & BIN <=16)
+d$cum_bad <- cumsum(d$BAD)
+d$cum_good <- cumsum(d$GOOD)
+d$cum_total <- cumsum(d$TOTAL)
+d1 <- rbind(head(d,1), tail(d, 1))
+d2 <- data.table(d1[1,c(2)], d1[2,c(3,14,15,16)])
+
+e <- subset(KK112, BIN > 16)
+e$cum_bad <- cumsum(e$BAD)
+e$cum_good <- cumsum(e$GOOD)
+e$cum_total <- cumsum(e$TOTAL)
+e1 <- rbind(head(e,1), tail(e, 1))
+e2 <- data.table(e1[1,c(2)], e1[2,c(3,14,15,16)])
+
+total <- rbind(a2,b2,c2,d2,e2)
+BIN <- c(1,2,3,4,5)
+total <- rename(total, c("MIN"="V1", "GOOD"="cum_bad", "BAD"="cum_good", "TOTAL"="cum_total"))
+total <- data.frame(BIN, total)
+total
+```
+
+(12)차입금의존도
+```{r,echo=F, include=TRUE}
+KK060 <- data.frame(woe(Data = train_df_sim, Independent = "KK060", Continuous = TRUE, Dependent = "budo", C_Bin = 20, Bad = 0, Good = 1))
+KK060$WOE[is.infinite(KK060$WOE)] <- 0
+KK060$WOE <- KK060$WOE*0.01 
+KK060
+```
+
+```{r,echo=F, include=F}
+#KK060
+diff(KK060$WOE)>0          # 증가 T, 감소/변화없음 F
+diff( diff(KK060$WOE)>0 )  # -1 c(T,F) 증가하다감소, 0 c(T,T) c(F,F) 유지 , 1 c(F,T) 감소하다 증가 
+infl_KK060 = c(FALSE,  diff(diff(KK060$WOE)>0)!=0, FALSE)
+data_KK060 <- data.table(KK060$BIN,KK060$WOE,infl_KK060)
+sdata_KK060 <- data_KK060[infl_KK060==T,]
+```
+
+```{r,echo=F, include=TRUE}
+## Smoothing -------------------------------------------------------------------
+smoothing_KK060<- loess(KK060$WOE~KK060$BIN, span=0.5)
+xl_KK060  <- seq(min(KK060$BIN),max(KK060$BIN), (max(KK060$BIN)-min(KK060$BIN))/10000)
+out_KK060 <- predict(smoothing_KK060, xl_KK060)
+infl_KK060<- c(diff(diff(out_KK060)>0)!=0,F,F)
+
+### LINE ----
+sdata_KK060 <- data.table(xl_KK060,out_KK060, infl_KK060)
+options(repr.plot.width = 14, repr.plot.height = 8)
+ggplot(data_KK060, aes(KK060$BIN,KK060$WOE)) + geom_path(color="gray") +
+  geom_point(data=sdata_KK060, aes(xl_KK060, out_KK060), size=.1, color="black") +
+  geom_point(mapping =aes(sdata_KK060$xl_KK060[3335], sdata_KK060$out_KK060[3335]), color="blue", size=2) +
+  geom_point(mapping =aes(sdata_KK060$xl_KK060[5558], sdata_KK060$out_KK060[5558]), color="blue", size=2) +
+  geom_point(mapping =aes(sdata_KK060$xl_KK060[7780], sdata_KK060$out_KK060[7780]), color="blue", size=2) +
+  geom_point(mapping =aes(sdata_KK060$xl_KK060[8335], sdata_KK060$out_KK060[8335]), color="blue", size=2) +
+  scale_x_continuous(breaks=seq(0, 30, 1)) +
+  scale_y_continuous(breaks = seq(-2, 2, by=1), limits=c(-2,2)) + 
+  theme_test() +
+  labs(title="이자보상비율(%)",
+  x ="BIN (1~20)", y = "WOE") +
+  theme(plot.title = element_text(hjust = 0.5)) 
+```
+
+
+```{r}
+a <- subset(KK060, BIN <= 7 )
+a$cum_bad <- cumsum(a$BAD)
+a$cum_good <- cumsum(a$GOOD)
+a$cum_total <- cumsum(a$TOTAL)
+a1 <- rbind(head(a,1), tail(a, 1))
+a2 <- data.table(a1[1,c(2)], a1[2,c(3,14,15,16)])
+
+b <- subset(KK060, BIN > 7 & BIN <=11)
+b$cum_bad <- cumsum(b$BAD)
+b$cum_good <- cumsum(b$GOOD)
+b$cum_total <- cumsum(b$TOTAL)
+b1 <- rbind(head(b,1), tail(b, 1))
+b2 <- data.table(b1[1,c(2)], b1[2,c(3,14,15,16)])
+
+c <- subset(KK060, BIN > 11 & BIN <=15)
+c$cum_bad <- cumsum(c$BAD)
+c$cum_good <- cumsum(c$GOOD)
+c$cum_total <- cumsum(c$TOTAL)
+c1 <- rbind(head(c,1), tail(c, 1))
+c2 <- data.table(c1[1,c(2)], c1[2,c(3,14,15,16)])
+
+
+d <- subset(KK060, BIN > 15 & BIN <=16)
+d$cum_bad <- cumsum(d$BAD)
+d$cum_good <- cumsum(d$GOOD)
+d$cum_total <- cumsum(d$TOTAL)
+d1 <- rbind(head(d,1), tail(d, 1))
+d2 <- data.table(d1[1,c(2)], d1[2,c(3,14,15,16)])
+
+e <- subset(KK060, BIN > 16)
+e$cum_bad <- cumsum(e$BAD)
+e$cum_good <- cumsum(e$GOOD)
+e$cum_total <- cumsum(e$TOTAL)
+e1 <- rbind(head(e,1), tail(e, 1))
+e2 <- data.table(e1[1,c(2)], e1[2,c(3,14,15,16)])
+
+total <- rbind(a2,b2,c2,d2,e2)
+BIN <- c(1,2,3,4,5)
+total <- rename(total, c("MIN"="V1", "GOOD"="cum_bad", "BAD"="cum_good", "TOTAL"="cum_total"))
+total <- data.frame(BIN, total)
+total
+```
+
+(13)부채상환계수
+```{r,echo=F, include=TRUE}
+KK022 <- data.frame(woe(Data = train_df_sim, Independent = "KK022", Continuous = TRUE, Dependent = "budo", C_Bin = 20, Bad = 0, Good = 1))
+KK022$WOE[is.infinite(KK022$WOE)] <- 0
+KK022$WOE <- KK022$WOE*0.01 
+KK022
+```
+
+```{r,echo=F, include=F}
+#KK022
+diff(KK022$WOE)>0          # 증가 T, 감소/변화없음 F
+diff( diff(KK022$WOE)>0 )  # -1 c(T,F) 증가하다감소, 0 c(T,T) c(F,F) 유지 , 1 c(F,T) 감소하다 증가 
+infl_KK022 = c(FALSE,  diff(diff(KK022$WOE)>0)!=0, FALSE)
+data_KK022 <- data.table(KK022$BIN,KK022$WOE,infl_KK022)
+sdata_KK022 <- data_KK022[infl_KK022==T,]
+```
+
+```{r,echo=F, include=TRUE}
+## Smoothing -------------------------------------------------------------------
+smoothing_KK022<- loess(KK022$WOE~KK022$BIN, span=0.45)
+xl_KK022  <- seq(min(KK022$BIN),max(KK022$BIN), (max(KK022$BIN)-min(KK022$BIN))/10000)
+out_KK022 <- predict(smoothing_KK022, xl_KK022)
+infl_KK022<- c(diff(diff(out_KK022)>0)!=0,F,F)
+
+### LINE ----
+sdata_KK022 <- data.table(xl_KK022,out_KK022, infl_KK022)
+options(repr.plot.width = 14, repr.plot.height = 8)
+ggplot(data_KK022, aes(KK022$BIN,KK022$WOE)) + geom_path(color="gray") +
+  geom_point(data=sdata_KK022, aes(xl_KK022, out_KK022), size=.1, color="black") +
+  geom_point(mapping =aes(sdata_KK022$xl_KK022[3335], sdata_KK022$out_KK022[3335]), color="blue", size=2) +
+  geom_point(mapping =aes(sdata_KK022$xl_KK022[6679], sdata_KK022$out_KK022[6679]), color="blue", size=2) +
+  geom_point(mapping =aes(sdata_KK022$xl_KK022[7781], sdata_KK022$out_KK022[7781]), color="blue", size=2) +
+  scale_x_continuous(breaks=seq(0, 30, 1)) +
+  scale_y_continuous(breaks = seq(-2, 2, by=1), limits=c(-2,2)) + 
+  theme_test() +
+  labs(title="이자보상비율(%)",
+  x ="BIN (1~20)", y = "WOE") +
+  theme(plot.title = element_text(hjust = 0.5)) 
+```
+
+```{r}
+a <- subset(KK022, BIN <= 7 )
+a$cum_bad <- cumsum(a$BAD)
+a$cum_good <- cumsum(a$GOOD)
+a$cum_total <- cumsum(a$TOTAL)
+a1 <- rbind(head(a,1), tail(a, 1))
+a2 <- data.table(a1[1,c(2)], a1[2,c(3,14,15,16)])
+
+b <- subset(KK022, BIN > 7 & BIN <=13)
+b$cum_bad <- cumsum(b$BAD)
+b$cum_good <- cumsum(b$GOOD)
+b$cum_total <- cumsum(b$TOTAL)
+b1 <- rbind(head(b,1), tail(b, 1))
+b2 <- data.table(b1[1,c(2)], b1[2,c(3,14,15,16)])
+
+c <- subset(KK022, BIN > 13 & BIN <=15)
+c$cum_bad <- cumsum(c$BAD)
+c$cum_good <- cumsum(c$GOOD)
+c$cum_total <- cumsum(c$TOTAL)
+c1 <- rbind(head(c,1), tail(c, 1))
+c2 <- data.table(c1[1,c(2)], c1[2,c(3,14,15,16)])
+
+
+d <- subset(KK022, BIN > 15 )
+d$cum_bad <- cumsum(d$BAD)
+d$cum_good <- cumsum(d$GOOD)
+d$cum_total <- cumsum(d$TOTAL)
+d1 <- rbind(head(d,1), tail(d, 1))
+d2 <- data.table(d1[1,c(2)], d1[2,c(3,14,15,16)])
+
+
+total <- rbind(a2,b2,c2,d2)
+BIN <- c(1,2,3,4)
+total <- rename(total, c("MIN"="V1", "GOOD"="cum_bad", "BAD"="cum_good", "TOTAL"="cum_total"))
+total <- data.frame(BIN, total)
+total
+```
+
+(14)매출액증가율
+```{r,echo=F, include=TRUE}
+KK030 <- data.frame(woe(Data = train_df_sim, Independent = "KK030", Continuous = TRUE, Dependent = "budo", C_Bin = 20, Bad = 0, Good = 1))
+KK030$WOE[is.infinite(KK030$WOE)] <- 0
+KK030$WOE <- KK030$WOE*0.01 
+```
+
+```{r,echo=F, include=F}
+#KK030
+diff(KK030$WOE)>0          # 증가 T, 감소/변화없음 F
+diff( diff(KK030$WOE)>0 )  # -1 c(T,F) 증가하다감소, 0 c(T,T) c(F,F) 유지 , 1 c(F,T) 감소하다 증가 
+infl_KK030 = c(FALSE,  diff(diff(KK030$WOE)>0)!=0, FALSE)
+data_KK030 <- data.table(KK030$BIN,KK030$WOE,infl_KK030)
+sdata_KK030 <- data_KK030[infl_KK030==T,]
+```
+
+```{r,echo=F, include=TRUE}
+## Smoothing -------------------------------------------------------------------
+smoothing_KK030<- loess(KK030$WOE~KK030$BIN, span=0.43)
+xl_KK030  <- seq(min(KK030$BIN),max(KK030$BIN), (max(KK030$BIN)-min(KK030$BIN))/10000)
+out_KK030 <- predict(smoothing_KK030, xl_KK030)
+infl_KK030<- c(diff(diff(out_KK030)>0)!=0,F,F)
+
+### LINE ----
+sdata_KK030 <- data.table(xl_KK030,out_KK030, infl_KK030)
+options(repr.plot.width = 14, repr.plot.height = 8)
+ggplot(data_KK030, aes(KK030$BIN,KK030$WOE)) + geom_path(color="gray") +
+  geom_point(data=sdata_KK030, aes(xl_KK030, out_KK030), size=.1, color="black") +
+  geom_point(mapping =aes(sdata_KK030$xl_KK030[3418], sdata_KK030$out_KK030[3418]), color="blue", size=2) +
+  geom_point(mapping =aes(sdata_KK030$xl_KK030[5000], sdata_KK030$out_KK030[5000]), color="blue", size=2) +
+  geom_point(mapping =aes(sdata_KK030$xl_KK030[6173], sdata_KK030$out_KK030[6173]), color="blue", size=2) +
+  geom_point(mapping =aes(sdata_KK030$xl_KK030[7793], sdata_KK030$out_KK030[7793]), color="blue", size=2) +
+  scale_x_continuous(breaks=seq(0, 30, 1)) +
+  scale_y_continuous(breaks = seq(-2, 2, by=1), limits=c(-2,2)) + 
+  theme_test() +
+  labs(title="이자보상비율(%)",
+  x ="BIN (1~20)", y = "WOE") +
+  theme(plot.title = element_text(hjust = 0.5)) 
+```
+
+```{r}
+a <- subset(KK030, BIN <= 7 )
+a$cum_bad <- cumsum(a$BAD)
+a$cum_good <- cumsum(a$GOOD)
+a$cum_total <- cumsum(a$TOTAL)
+a1 <- rbind(head(a,1), tail(a, 1))
+a2 <- data.table(a1[1,c(2)], a1[2,c(3,14,15,16)])
+
+b <- subset(KK030, BIN > 7 & BIN <=10)
+b$cum_bad <- cumsum(b$BAD)
+b$cum_good <- cumsum(b$GOOD)
+b$cum_total <- cumsum(b$TOTAL)
+b1 <- rbind(head(b,1), tail(b, 1))
+b2 <- data.table(b1[1,c(2)], b1[2,c(3,14,15,16)])
+
+c <- subset(KK030, BIN > 10 & BIN <=12)
+c$cum_bad <- cumsum(c$BAD)
+c$cum_good <- cumsum(c$GOOD)
+c$cum_total <- cumsum(c$TOTAL)
+c1 <- rbind(head(c,1), tail(c, 1))
+c2 <- data.table(c1[1,c(2)], c1[2,c(3,14,15,16)])
+
+
+d <- subset(KK030, BIN > 12 & BIN <=15)
+d$cum_bad <- cumsum(d$BAD)
+d$cum_good <- cumsum(d$GOOD)
+d$cum_total <- cumsum(d$TOTAL)
+d1 <- rbind(head(d,1), tail(d, 1))
+d2 <- data.table(d1[1,c(2)], d1[2,c(3,14,15,16)])
+
+e <- subset(KK030, BIN > 15)
+e$cum_bad <- cumsum(e$BAD)
+e$cum_good <- cumsum(e$GOOD)
+e$cum_total <- cumsum(e$TOTAL)
+e1 <- rbind(head(e,1), tail(e, 1))
+e2 <- data.table(e1[1,c(2)], e1[2,c(3,14,15,16)])
+
+total <- rbind(a2,b2,c2,d2,e2)
+BIN <- c(1,2,3,4,5)
+total <- rename(total, c("MIN"="V1", "GOOD"="cum_bad", "BAD"="cum_good", "TOTAL"="cum_total"))
+total <- data.frame(BIN, total)
+total
+```
+
+(15)총자산증가율
+```{r,echo=F, include=TRUE}
+KK025 <- data.frame(woe(Data = train_df_sim, Independent = "KK025", Continuous = TRUE, Dependent = "budo", C_Bin = 20, Bad = 0, Good = 1))
+KK025$WOE[is.infinite(KK025$WOE)] <- 0
+KK025$WOE <- KK025$WOE*0.01 
+KK025
+```
+
+```{r,echo=F, include=F}
+#KK025
+diff(KK025$WOE)>0          # 증가 T, 감소/변화없음 F
+diff( diff(KK025$WOE)>0 )  # -1 c(T,F) 증가하다감소, 0 c(T,T) c(F,F) 유지 , 1 c(F,T) 감소하다 증가 
+infl_KK025 = c(FALSE,  diff(diff(KK025$WOE)>0)!=0, FALSE)
+data_KK025 <- data.table(KK025$BIN,KK025$WOE,infl_KK025)
+sdata_KK025 <- data_KK025[infl_KK025==T,]
+```
+
+```{r,echo=F, include=TRUE}
+## Smoothing -------------------------------------------------------------------
+smoothing_KK025 <- loess(KK025$WOE~KK025$BIN, span=0.45)
+xl_KK025  <- seq(min(KK025$BIN),max(KK025$BIN), (max(KK025$BIN)-min(KK025$BIN))/10000)
+out_KK025 <- predict(smoothing_KK025, xl_KK025)
+infl_KK025<- c(diff(diff(out_KK025)>0)!=0,F,F)
+
+### LINE ----
+sdata_KK025 <- data.table(xl_KK025,out_KK025, infl_KK025)
+options(repr.plot.width = 14, repr.plot.height = 8)
+ggplot(data_KK025, aes(KK025$BIN,KK025$WOE)) + geom_path(color="gray") +
+  geom_point(data=sdata_KK025, aes(xl_KK025, out_KK025), size=.1, color="black") +
+  geom_point(mapping =aes(sdata_KK025$xl_KK025[3357], sdata_KK025$out_KK025[3357]), color="blue", size=2) +
+  geom_point(mapping =aes(sdata_KK025$xl_KK025[5014], sdata_KK025$out_KK025[5014]), color="blue", size=2) +
+  geom_point(mapping =aes(sdata_KK025$xl_KK025[6155], sdata_KK025$out_KK025[6155]), color="blue", size=2) +
+    geom_point(mapping =aes(sdata_KK025$xl_KK025[7927], sdata_KK025$out_KK025[7927]), color="blue", size=2) +
+  scale_x_continuous(breaks=seq(0, 30, 1)) +
+  scale_y_continuous(breaks = seq(-2, 2, by=1), limits=c(-2,2)) + 
+  theme_test() +
+  labs(title="이자보상비율(%)",
+  x ="BIN (1~20)", y = "WOE") +
+  theme(plot.title = element_text(hjust = 0.5)) 
+```
+
+```{r}
+a <- subset(KK025, BIN <= 7 )
+a$cum_bad <- cumsum(a$BAD)
+a$cum_good <- cumsum(a$GOOD)
+a$cum_total <- cumsum(a$TOTAL)
+a1 <- rbind(head(a,1), tail(a, 1))
+a2 <- data.table(a1[1,c(2)], a1[2,c(3,14,15,16)])
+
+b <- subset(KK025, BIN > 7 & BIN <=10)
+b$cum_bad <- cumsum(b$BAD)
+b$cum_good <- cumsum(b$GOOD)
+b$cum_total <- cumsum(b$TOTAL)
+b1 <- rbind(head(b,1), tail(b, 1))
+b2 <- data.table(b1[1,c(2)], b1[2,c(3,14,15,16)])
+
+c <- subset(KK025, BIN > 10 & BIN <=12)
+c$cum_bad <- cumsum(c$BAD)
+c$cum_good <- cumsum(c$GOOD)
+c$cum_total <- cumsum(c$TOTAL)
+c1 <- rbind(head(c,1), tail(c, 1))
+c2 <- data.table(c1[1,c(2)], c1[2,c(3,14,15,16)])
+
+
+d <- subset(KK025, BIN > 12 & BIN <=15)
+d$cum_bad <- cumsum(d$BAD)
+d$cum_good <- cumsum(d$GOOD)
+d$cum_total <- cumsum(d$TOTAL)
+d1 <- rbind(head(d,1), tail(d, 1))
+d2 <- data.table(d1[1,c(2)], d1[2,c(3,14,15,16)])
+
+e <- subset(KK025, BIN > 15)
+e$cum_bad <- cumsum(e$BAD)
+e$cum_good <- cumsum(e$GOOD)
+e$cum_total <- cumsum(e$TOTAL)
+e1 <- rbind(head(e,1), tail(e, 1))
+e2 <- data.table(e1[1,c(2)], e1[2,c(3,14,15,16)])
+
+total <- rbind(a2,b2,c2,d2,e2)
+BIN <- c(1,2,3,4,5)
+total <- rename(total, c("MIN"="V1", "GOOD"="cum_bad", "BAD"="cum_good", "TOTAL"="cum_total"))
+total <- data.frame(BIN, total)
+total
+```
+
+(16)총자산회전율
+```{r,echo=F, include=TRUE}
+KK137 <- data.frame(woe(Data = train_df_sim, Independent = "KK137", Continuous = TRUE, Dependent = "budo", C_Bin = 20, Bad = 0, Good = 1))
+KK137$WOE[is.infinite(KK137$WOE)] <- 0
+KK137$WOE <- KK137$WOE*0.01 
+KK137
+```
+
+```{r,echo=F, include=F}
+#KK137
+diff(KK137$WOE)>0          # 증가 T, 감소/변화없음 F
+diff( diff(KK137$WOE)>0 )  # -1 c(T,F) 증가하다감소, 0 c(T,T) c(F,F) 유지 , 1 c(F,T) 감소하다 증가 
+infl_KK137 = c(FALSE,  diff(diff(KK137$WOE)>0)!=0, FALSE)
+data_KK137 <- data.table(KK137$BIN,KK137$WOE,infl_KK137)
+sdata_KK137 <- data_KK137[infl_KK137==T,]
+```
+
+```{r,echo=F, include=TRUE}
+## Smoothing -------------------------------------------------------------------
+smoothing_KK137 <- loess(KK137$WOE~KK137$BIN, span=0.5)
+xl_KK137  <- seq(min(KK137$BIN),max(KK137$BIN), (max(KK137$BIN)-min(KK137$BIN))/10000)
+out_KK137 <- predict(smoothing_KK137, xl_KK137)
+infl_KK137<- c(diff(diff(out_KK137)>0)!=0,F,F)
+
+### LINE ----
+sdata_KK137 <- data.table(xl_KK137,out_KK137, infl_KK137)
+options(repr.plot.width = 14, repr.plot.height = 8)
+ggplot(data_KK137, aes(KK137$BIN,KK137$WOE)) + geom_path(color="gray") +
+  geom_point(data=sdata_KK137, aes(xl_KK137, out_KK137), size=.1, color="black") +
+  geom_point(mapping =aes(sdata_KK137$xl_KK137[1674], sdata_KK137$out_KK137[1674]), color="blue", size=2) +
+  geom_point(mapping =aes(sdata_KK137$xl_KK137[2886], sdata_KK137$out_KK137[2886]), color="blue", size=2) +
+  geom_point(mapping =aes(sdata_KK137$xl_KK137[4458], sdata_KK137$out_KK137[4458]), color="blue", size=2) +
+  geom_point(mapping =aes(sdata_KK137$xl_KK137[6165], sdata_KK137$out_KK137[6165]), color="blue", size=2) +
+  scale_x_continuous(breaks=seq(0, 30, 1)) +
+  scale_y_continuous(breaks = seq(-2, 2, by=1), limits=c(-2,2)) + 
+  theme_test() +
+  labs(title="이자보상비율(%)",
+  x ="BIN (1~20)", y = "WOE") +
+  theme(plot.title = element_text(hjust = 0.5)) 
+```
+
+```{r}
+a <- subset(KK137, BIN <= 4 )
+a$cum_bad <- cumsum(a$BAD)
+a$cum_good <- cumsum(a$GOOD)
+a$cum_total <- cumsum(a$TOTAL)
+a1 <- rbind(head(a,1), tail(a, 1))
+a2 <- data.table(a1[1,c(2)], a1[2,c(3,14,15,16)])
+
+b <- subset(KK137, BIN > 4 & BIN <=6)
+b$cum_bad <- cumsum(b$BAD)
+b$cum_good <- cumsum(b$GOOD)
+b$cum_total <- cumsum(b$TOTAL)
+b1 <- rbind(head(b,1), tail(b, 1))
+b2 <- data.table(b1[1,c(2)], b1[2,c(3,14,15,16)])
+
+c <- subset(KK137, BIN > 6 & BIN <=9)
+c$cum_bad <- cumsum(c$BAD)
+c$cum_good <- cumsum(c$GOOD)
+c$cum_total <- cumsum(c$TOTAL)
+c1 <- rbind(head(c,1), tail(c, 1))
+c2 <- data.table(c1[1,c(2)], c1[2,c(3,14,15,16)])
+
+
+d <- subset(KK137, BIN > 9 & BIN <=12)
+d$cum_bad <- cumsum(d$BAD)
+d$cum_good <- cumsum(d$GOOD)
+d$cum_total <- cumsum(d$TOTAL)
+d1 <- rbind(head(d,1), tail(d, 1))
+d2 <- data.table(d1[1,c(2)], d1[2,c(3,14,15,16)])
+
+e <- subset(KK137, BIN > 12)
+e$cum_bad <- cumsum(e$BAD)
+e$cum_good <- cumsum(e$GOOD)
+e$cum_total <- cumsum(e$TOTAL)
+e1 <- rbind(head(e,1), tail(e, 1))
+e2 <- data.table(e1[1,c(2)], e1[2,c(3,14,15,16)])
+
+total <- rbind(a2,b2,c2,d2,e2)
+BIN <- c(1,2,3,4,5)
+total <- rename(total, c("MIN"="V1", "GOOD"="cum_bad", "BAD"="cum_good", "TOTAL"="cum_total"))
+total <- data.frame(BIN, total)
+total
+```
+
+
+(17)재고자산회전율
+
+```{r,echo=F, include=TRUE}
+KK081 <- data.frame(woe(Data = train_df_sim, Independent = "KK081", Continuous = TRUE, Dependent = "budo", C_Bin = 20, Bad = 0, Good = 1))
+KK081$WOE[is.infinite(KK081$WOE)] <- 0
+KK081$WOE <- KK081$WOE*0.01 
+KK081
+```
+
+```{r,echo=F, include=F}
+#KK081
+diff(KK081$WOE)>0          # 증가 T, 감소/변화없음 F
+diff( diff(KK081$WOE)>0 )  # -1 c(T,F) 증가하다감소, 0 c(T,T) c(F,F) 유지 , 1 c(F,T) 감소하다 증가 
+infl_KK081 = c(FALSE,  diff(diff(KK081$WOE)>0)!=0, FALSE)
+data_KK081 <- data.table(KK081$BIN,KK081$WOE,infl_KK081)
+sdata_KK081 <- data_KK081[infl_KK081==T,]
+```
+
+```{r,echo=F, include=TRUE}
+## Smoothing -------------------------------------------------------------------
+smoothing_KK081 <- loess(KK081$WOE~KK081$BIN, span=0.43)
+xl_KK081  <- seq(min(KK081$BIN),max(KK081$BIN), (max(KK081$BIN)-min(KK081$BIN))/10000)
+out_KK081 <- predict(smoothing_KK081, xl_KK081)
+infl_KK081<- c(diff(diff(out_KK081)>0)!=0,F,F)
+
+### LINE ----
+sdata_KK081 <- data.table(xl_KK081,out_KK081, infl_KK081)
+options(repr.plot.width = 14, repr.plot.height = 8)
+ggplot(data_KK081, aes(KK081$BIN,KK081$WOE)) + geom_path(color="gray") +
+  geom_point(data=sdata_KK081, aes(xl_KK081, out_KK081), size=.1, color="black") +
+  geom_point(mapping =aes(sdata_KK081$xl_KK081[7229], sdata_KK081$out_KK081[7229]), color="blue", size=2) +
+  geom_point(mapping =aes(sdata_KK081$xl_KK081[8381], sdata_KK081$out_KK081[8381]), color="blue", size=2) +
+  scale_x_continuous(breaks=seq(0, 30, 1)) +
+  scale_y_continuous(breaks = seq(-2, 2, by=1), limits=c(-2,2)) + 
+  theme_test() +
+  labs(title="이자보상비율(%)",
+  x ="BIN (1~20)", y = "WOE") +
+  theme(plot.title = element_text(hjust = 0.5)) 
+```
+
+```{r}
+a <- subset(KK081, BIN <= 14 )
+a$cum_bad <- cumsum(a$BAD)
+a$cum_good <- cumsum(a$GOOD)
+a$cum_total <- cumsum(a$TOTAL)
+a1 <- rbind(head(a,1), tail(a, 1))
+a2 <- data.table(a1[1,c(2)], a1[2,c(3,14,15,16)])
+
+b <- subset(KK081, BIN > 14 & BIN <=16)
+b$cum_bad <- cumsum(b$BAD)
+b$cum_good <- cumsum(b$GOOD)
+b$cum_total <- cumsum(b$TOTAL)
+b1 <- rbind(head(b,1), tail(b, 1))
+b2 <- data.table(b1[1,c(2)], b1[2,c(3,14,15,16)])
+
+c <- subset(KK081, BIN > 16 )
+c$cum_bad <- cumsum(c$BAD)
+c$cum_good <- cumsum(c$GOOD)
+c$cum_total <- cumsum(c$TOTAL)
+c1 <- rbind(head(c,1), tail(c, 1))
+c2 <- data.table(c1[1,c(2)], c1[2,c(3,14,15,16)])
+
+total <- rbind(a2,b2,c2)
+BIN <- c(1,2,3)
+total <- rename(total, c("MIN"="V1", "GOOD"="cum_bad", "BAD"="cum_good", "TOTAL"="cum_total"))
+total <- data.frame(BIN, total)
+total
+```
+(18)자금지원횟수
+
+(19)특허출원갯수
+
+(20)자본규모(비외감)
+```{r}
+KK092 <- data.frame(woe(Data = cr, Independent = "KK092", Continuous = TRUE, Dependent = "budo", C_Bin = 50, Bad = 0, Good = 1))
+KK092$WOE[is.infinite(KK092$WOE)] <- 0
+KK092$WOE <- KK092$WOE*0.01 
+KK092
+
+#KK050
+### Inflection point
+### concave upwards to downward  / concave downward to upwards
+### increseing to decreaseing  / decreaseing to increasing
+diff(KK092$WOE)>0          # 증가 T, 감소/변화없음 F
+### positive to negative / negative to postive
+diff( diff(KK092$WOE)>0 )  # -1 c(T,F) 증가하다감소, 0 c(T,T) c(F,F) 유지 , 1 c(F,T) 감소하다 증가 
+infl_KK092 = c(FALSE,  diff(diff(KK092$WOE)>0)!=0, FALSE)
+data_KK092 <- data.table(KK092$BIN,KK092$WOE,infl_KK092)
+sdata_KK092 <- data_KK092[infl_KK092==T,]
+## Smoothing -------------------------------------------------------------------
+smoothing_KK092 <- loess(KK092$WOE~KK092$BIN, span=0.4)
+xl_KK092  <- seq(min(KK092$BIN),max(KK092$BIN), (max(KK092$BIN)-min(KK092$BIN))/10000)
+out_KK092 <- predict(smoothing_KK092, xl_KK092)
+infl_KK092 <- c(diff(diff(out_KK092)>0)!=0,F,F)
+
+### LINE ----
+sdata_KK092 <- data.table(xl_KK092,out_KK092, infl_KK092)
+options(repr.plot.width = 14, repr.plot.height = 8)
+ggplot(data_KK092, aes(x=KK092$BIN,y=KK092$WOE)) + geom_path(color="gray") +
+  geom_point(data=sdata_KK092, aes(xl_KK092, out_KK092), size=.1, color="black") +
+  #geom_point(mapping =aes(sdata_KK092$xl_KK092[3940], sdata_KK092$out_KK092[3940]), color="blue") +
+  #geom_point(mapping =aes(sdata_KK092$xl_KK092[6607], sdata_KK092$out_KK092[6607]), color="blue") +
+  #geom_point(data=sdata[infl], aes(xl, out), size=2, color="blue", shape=1) +
+  #geom_segment(data=sdata[infl], aes(x=xl, y=-2, xend=xl, yend=out),color='blue', size=0.2) +
+  scale_x_continuous(breaks=seq(0, 50, 1))+
+  scale_y_continuous(breaks = seq(-2, 2, by=1), limits=c(-2,2)) + 
+  theme_test() +
+  labs(title="EBIT/매출액 WOE",
+       x ="BIN (1~20)", y = "WOE") +
+  theme(plot.title = element_text(hjust = 0.5)) 
+```
