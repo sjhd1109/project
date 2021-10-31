@@ -60,10 +60,10 @@
      
      중소기업 재무 분석 결과(woe) :  https://github.com/sjhd1109/project/blob/main/%EC%8B%A0%EC%9A%A9%ED%8F%89%EA%B0%80%EB%AA%A8%EB%8D%B8%EB%A7%81%20%EA%B4%80%EB%A0%A8%20%ED%99%9C%EB%8F%99%20%EB%B3%B4%EA%B3%A0_%EA%B9%80%EC%86%8C%EC%A0%95_21.04.pdf
  
- 6. 중소기업 딥러닝 신용평가 모델링 (explainable AI 활용)
+ 6. 중소기업 딥러닝 신용평가 모델링 (explainable AI 활용) / 중진공 공모전 
   
-    코드 링크 : https://github.com/sjhd1109/project/blob/main/XAI_modeling(dnn).ipynb
+    코드 링크(딥러닝) : https://github.com/sjhd1109/project/blob/main/XAI_modeling(dnn).ipynb
                
-                 https://github.com/sjhd1109/project/blob/main/xai%20credig%20modeling_data%EC%A0%84%EC%B2%98%EB%A6%AC.ipynb
+    코드링크(데이터 처리) : https://github.com/sjhd1109/project/blob/main/xai%20credig%20modeling_data%EC%A0%84%EC%B2%98%EB%A6%AC.ipynb
  
  
