@@ -277,7 +277,7 @@ ggplot() +
 #4) 미세먼지 농도 빈도수 
 #5) 미세먼지 이외 대기오염 농도 빈도수
 
-#포기
+
 map_shape@data %>% head
 
 sb <- read.csv("starbucks.csv") %>% as_tibble
