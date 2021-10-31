@@ -42,12 +42,13 @@
  
  5. 중소기업 신용평가 모델링 (딥러닝 모델 구축), 중소기업 신용 데이터 분석
    
-     코드 링크 :
+     코드 링크 : https://github.com/sjhd1109/project/blob/main/20210916_modeling(%EA%B3%B5%EB%AA%A8%EC%A0%84).ipynb
    
-     분석 결과 링크 :
+     분석 결과 링크 :  
  
  6. 중소기업 딥러닝 신용평가 모델링 (explainable AI 활용)
   
-    코드 링크 :
+    코드 링크 : https://github.com/sjhd1109/project/blob/main/XAI_modeling(dnn).ipynb
+               https://github.com/sjhd1109/project/blob/main/xai%20credig%20modeling_data%EC%A0%84%EC%B2%98%EB%A6%AC.ipynb
  
  
