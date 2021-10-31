@@ -40,9 +40,9 @@
  
  4. 베이지안 연구방법 : 신용평가 모델링에서 MCMC방법과 로지스틱 회귀분석 결과 비교
  
-   코드 링크 :  https://github.com/sjhd1109/project/blob/main/%EB%B2%A0%EC%9D%B4%EC%A7%80%EC%95%88.R
+     코드 링크 :  https://github.com/sjhd1109/project/blob/main/%EB%B2%A0%EC%9D%B4%EC%A7%80%EC%95%88.R
  
-   분석결과 파일 링크 :  https://github.com/sjhd1109/project/blob/main/%EB%B2%A0%EC%9D%B4%EC%A7%80%EC%95%88%20%EA%B2%B0%EA%B3%BC%EB%B6%84%EC%84%9D.pdf
+     분석결과 파일 링크 :  https://github.com/sjhd1109/project/blob/main/%EB%B2%A0%EC%9D%B4%EC%A7%80%EC%95%88%20%EA%B2%B0%EA%B3%BC%EB%B6%84%EC%84%9D.pdf
  
  5. 시계열 분석과 예측 : 대통령 지지율과 거시경제의 상관관계 분석 (시계열 데이터 분석과 시계열 회귀모델링 분석)
 
