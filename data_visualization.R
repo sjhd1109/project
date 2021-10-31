@@ -42,7 +42,7 @@ seoul_map <- map[map$id <= 11740,]
 M <- merge(seoul_map, seoul_id, by = "id")
 
 
-#데이터
+#데이터 load
 seoul_green <- read.csv("sclaed-mise(green).csv") 
 seoul_mise_t <- read.csv("misetest.csv") 
 seoul_id_green <- left_join(seoul_green, seoul, by="cityname")
