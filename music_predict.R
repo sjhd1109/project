@@ -81,10 +81,10 @@ prop.table(table(spotify_test$target))
 # model building
 library(rpart)
 spotify_dt <- rpart(target ~ ., spotify_train)
-#인터넷으로 찾은 새로운 그림
+#plot
 library(rattle)
 fancyRpartPlot(spotify_dt, sub = NULL)
-#교수님st
+#plot
 plot(spotify_dt);text(spotify_dt)
 
 library(tree)
@@ -105,11 +105,11 @@ library(lightgbm)               # boosting
 library(plot3D)
 
 source("pred_2Dplot.r")
-#오류 해결못하겠음
+
 tmp.raprt.result<-rpart(target~danceability+energy+key+mode+speechiness+acousticness+liveness+valence+tempo+duration_ms+time_signature+chorus_hit, data=spotify_train)
 pred_2Dplot(tmp.raprt.result)
 
-####교수님st 끝
+###end
 
 
 # model fitting
